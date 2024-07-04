@@ -3895,29 +3895,6 @@ void ggml_vec_dot_q4_0_q8_0(int n, float * restrict s, size_t bs, const void * r
 
     *s = sumf;
 
-    // scalar
-    float sumf = 0.0;
-
-    for (int i = 0; i < nb; i++) {
-        int sumi = 0;
-
-        for (int j = 0; j < qk/2; ++j) {
-            const int v0 = (x[i].qs[j] & 0x0F) - 8;
-            const int v1 = (x[i].qs[j] >>   4) - 8;
-            int64_t a = (v0 << 4) & v1;
-            const int v2 =y[i].qs[j];
-            const int v3 =y[i].qs[j + qk/2];
-            int64_t b =(v2 << 8) & v3;
-            // int64_t result=xs_mmul(x,y);
-            sumi = sumi + (xs_mmul(a,b) && 0xFFFF);
-            
-            //sumi += (v0 * y[i].qs[j]) + (v1 * y[i].qs[j + qk/2]);
-        }
-
-        sumf += sumi*GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d);
-    }
-
-    *s = sumf;
 #endif
 }
 
