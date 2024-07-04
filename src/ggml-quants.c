@@ -3852,6 +3852,30 @@ void ggml_vec_dot_q4_0_q8_0(int n, float * restrict s, size_t bs, const void * r
     vsumf0 = vec_add(vsumf0, vec_sld(vsumf0, vsumf0, 8));
 
     *s = vec_extract(vsumf0, 0);
+#elif defined(__riscv_xs_mmul)
+    // scalar
+    float sumf = 0.0;
+
+    for (int i = 0; i < nb; i++) {
+        int sumi = 0;
+
+        for (int j = 0; j < qk/2; ++j) {
+            const int v0 = (x[i].qs[j] & 0x0F) - 8;
+            const int v1 = (x[i].qs[j] >>   4) - 8;
+            int64_t a = (v0 << 4) & v1;
+            const int v2 =y[i].qs[j];
+            const int v3 =y[i].qs[j + qk/2];
+            int64_t b =(v2 << 8) & v3;
+            // int64_t result=xs_mmul(x,y);
+            sumi = sumi + (xs_mmul(a,b) && 0xFFFF);
+            
+            //sumi += (v0 * y[i].qs[j]) + (v1 * y[i].qs[j + qk/2]);
+        }
+
+        sumf += sumi*GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d);
+    }
+
+    *s = sumf;
 #else
     // scalar
     float sumf = 0.0;
@@ -3862,8 +3886,32 @@ void ggml_vec_dot_q4_0_q8_0(int n, float * restrict s, size_t bs, const void * r
         for (int j = 0; j < qk/2; ++j) {
             const int v0 = (x[i].qs[j] & 0x0F) - 8;
             const int v1 = (x[i].qs[j] >>   4) - 8;
-
+            
             sumi += (v0 * y[i].qs[j]) + (v1 * y[i].qs[j + qk/2]);
+        }
+
+        sumf += sumi*GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d);
+    }
+
+    *s = sumf;
+
+    // scalar
+    float sumf = 0.0;
+
+    for (int i = 0; i < nb; i++) {
+        int sumi = 0;
+
+        for (int j = 0; j < qk/2; ++j) {
+            const int v0 = (x[i].qs[j] & 0x0F) - 8;
+            const int v1 = (x[i].qs[j] >>   4) - 8;
+            int64_t a = (v0 << 4) & v1;
+            const int v2 =y[i].qs[j];
+            const int v3 =y[i].qs[j + qk/2];
+            int64_t b =(v2 << 8) & v3;
+            // int64_t result=xs_mmul(x,y);
+            sumi = sumi + (xs_mmul(a,b) && 0xFFFF);
+            
+            //sumi += (v0 * y[i].qs[j]) + (v1 * y[i].qs[j + qk/2]);
         }
 
         sumf += sumi*GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d);
@@ -4965,32 +5013,112 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
 
     *s = sumf;
 
-#elif defined(__riscv_xs_vdot)
+// #elif defined(__riscv_xs_vdot)
+//     float sumf = 0.0;
+//     // each block have 32 int8
+//     for (int i = 0; i < nb; i++) {
+//         int64_t x0, x1, x2, x3;
+//         memcpy(&x0, &(x[i].qs[0]), 8);
+//         memcpy(&x1, &(x[i].qs[8]), 8);
+//         memcpy(&x2, &(x[i].qs[16]), 8);
+//         memcpy(&x3, &(x[i].qs[24]), 8);
+
+//         int64_t y0, y1, y2, y3;
+//         memcpy(&y0, &(y[i].qs[0]), 8);
+//         memcpy(&y1, &(y[i].qs[8]), 8);
+//         memcpy(&y2, &(y[i].qs[16]), 8);
+//         memcpy(&y3, &(y[i].qs[24]), 8);
+
+//         int64_t res0 = xs_vdot(x0, y0);
+//         int64_t res1 = xs_vdot(x1, y1);
+//         int64_t res2 = xs_vdot(x2, y2);
+//         int64_t res3 = xs_vdot(x3, y3);
+
+//         int sumi = res0 + res1 + res2 + res3;
+//         sumf += sumi*(GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d));
+//     }
+//     *s = sumf;
+
+#elif defined(__riscv_xs_mmul)
     float sumf = 0.0;
-    // each block have 32 int8
+    // each block have 64 int4
     for (int i = 0; i < nb; i++) {
-        int64_t x0, x1, x2, x3;
-        memcpy(&x0, &(x[i].qs[0]), 8);
-        memcpy(&x1, &(x[i].qs[8]), 8);
-        memcpy(&x2, &(x[i].qs[16]), 8);
-        memcpy(&x3, &(x[i].qs[24]), 8);
+        int64_t x0, x1, x2, x3,x4,x5,x6,x7,x8,x9,x10,x11,x12,x13,x14,x15;
+        memcpy(&x0, &(x[i].qs[0]), 4);
+        memcpy(&x1, &(x[i].qs[4]), 4);
+        memcpy(&x2, &(x[i].qs[8]), 4);
+        memcpy(&x3, &(x[i].qs[12]), 4);
+        memcpy(&x4, &(x[i].qs[16]), 4);
+        memcpy(&x5, &(x[i].qs[20]), 4);
+        memcpy(&x6, &(x[i].qs[24]), 4);
+        memcpy(&x7, &(x[i].qs[28]), 4);
+        memcpy(&x8, &(x[i].qs[32]), 4);
+        memcpy(&x9, &(x[i].qs[36]), 4);
+        memcpy(&x10, &(x[i].qs[40]), 4);
+        memcpy(&x11, &(x[i].qs[44]), 4);
+        memcpy(&x12, &(x[i].qs[48]), 4);
+        memcpy(&x13, &(x[i].qs[52]), 4);
+        memcpy(&x14, &(x[i].qs[56]), 4);
+        memcpy(&x15, &(x[i].qs[60]), 4);
 
-        int64_t y0, y1, y2, y3;
-        memcpy(&y0, &(y[i].qs[0]), 8);
-        memcpy(&y1, &(y[i].qs[8]), 8);
-        memcpy(&y2, &(y[i].qs[16]), 8);
-        memcpy(&y3, &(y[i].qs[24]), 8);
+        int64_t y0, y1, y2, y3,y4,y5,y6,y7,y8,y9,y10,y11,y12,y13,y14,y15;
+        memcpy(&y0, &(y[i].qs[0]), 4);
+        memcpy(&y1, &(y[i].qs[4]), 4);
+        memcpy(&y2, &(y[i].qs[8]), 4);
+        memcpy(&y3, &(y[i].qs[12]), 4);
+        memcpy(&y4, &(y[i].qs[16]), 4);
+        memcpy(&y5, &(y[i].qs[20]), 4);
+        memcpy(&y6, &(y[i].qs[24]), 4);
+        memcpy(&y7, &(y[i].qs[28]), 4);
+        memcpy(&y8, &(y[i].qs[32]), 4);
+        memcpy(&y9, &(y[i].qs[36]), 4);
+        memcpy(&y10, &(y[i].qs[40]), 4);
+        memcpy(&y11, &(y[i].qs[44]), 4);
+        memcpy(&y12, &(y[i].qs[48]), 4);
+        memcpy(&y13, &(y[i].qs[52]), 4);
+        memcpy(&y14, &(y[i].qs[56]), 4);
+        memcpy(&y15, &(y[i].qs[60]), 4);
+        y0=swap_bits(y0,16,32,16);
+        y1=swap_bits(y1,16,32,16);
+        y2=swap_bits(y2,16,32,16);
+        y3=swap_bits(y3,16,32,16);
+        y4=swap_bits(y4,16,32,16);
+        y5=swap_bits(y5,16,32,16);
+        y6=swap_bits(y6,16,32,16);
+        y7=swap_bits(y7,16,32,16);
+        y8=swap_bits(y8,16,32,16);
+        y9=swap_bits(y9,16,32,16); 
+        y10=swap_bits(y10,16,32,16);
+        y11=swap_bits(y11,16,32,16);
+        y12=swap_bits(y12,16,32,16);
+        y13=swap_bits(y13,16,32,16);
+        y14=swap_bits(y14,16,32,16);
+        y15=swap_bits(y15,16,32,16);
+        int64_t res0 = xs_mmul(x0, y0);
+        int64_t res1 = xs_mmul(x1, y1);
+        int64_t res2 = xs_mmul(x2, y2);
+        int64_t res3 = xs_mmul(x3, y3);
+        int64_t res4 = xs_mmul(x4, y4);
+        int64_t res5 = xs_mmul(x5, y5);
+        int64_t res6 = xs_mmul(x6, y6);
+        int64_t res7 = xs_mmul(x7, y7);
+        int64_t res8 = xs_mmul(x8, y8);
+        int64_t res9 = xs_mmul(x9, y9);
+        int64_t res10 = xs_mmul(x10, y10);
+        int64_t res11 = xs_mmul(x11, y11);
+        int64_t res12 = xs_mmul(x12, y12);
+        int64_t res13 = xs_mmul(x13, y13);
+        int64_t res14 = xs_mmul(x14, y14);
+        int64_t res15 = xs_mmul(x15, y15);
 
-        int64_t res0 = xs_vdot(x0, y0);
-        int64_t res1 = xs_vdot(x1, y1);
-        int64_t res2 = xs_vdot(x2, y2);
-        int64_t res3 = xs_vdot(x3, y3);
-
-        int sumi = res0 + res1 + res2 + res3;
+        int sumi = ((res0>>48)&0xFFFF)+(res0&0xFFFF) + ((res1>>48)&0xFFFF)+(res1&0xFFFF) + ((res2>>48)&0xFFFF)+(res2&0xFFFF)
+         + ((res3>>48)&0xFFFF)+(res3&0xFFFF)+((res4>>48)&0xFFFF)+(res4&0xFFFF)+((res5>>48)&0xFFFF)+(res5&0xFFFF)+((res6>>48)&0xFFFF)+(res6&0xFFFF)
+         +((res7>>48)&0xFFFF)+(res7&0xFFFF)+((res8>>48)&0xFFFF)+(res8&0xFFFF)+((res9>>48)&0xFFFF)+(res9&0xFFFF)+((res10>>48)&0xFFFF)+(res10&0xFFFF)
+         +((res11>>48)&0xFFFF)+(res11&0xFFFF) + ((res12>>48)&0xFFFF)+(res12&0xFFFF) + ((res13>>48)&0xFFFF)+(res13&0xFFFF)
+         +((res14>>48)&0xFFFF)+(res14&0xFFFF)+((res15>>48)&0xFFFF)+(res15&0xFFFF);
         sumf += sumi*(GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d));
     }
     *s = sumf;
-
 #elif defined(__POWER9_VECTOR__)
     vector float vsumf0 = vec_splats(0.0f);
 

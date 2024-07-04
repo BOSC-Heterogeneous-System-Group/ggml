@@ -443,8 +443,8 @@ static inline ggml_fp16_t ggml_compute_fp32_to_fp16(float f) {
 #include <riscv_vector.h>
 #endif
 
-#ifdef __riscv_xs_vdot
-#include <xs-vdot.h>
+#ifdef __riscv_xs_mmul
+#include <xs-mmul.h>
 #endif
 
 #ifdef __F16C__
