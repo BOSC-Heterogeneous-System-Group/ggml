@@ -4,7 +4,7 @@
 #include "ggml-impl.h"
 #include "ggml-quants.h"
 #include "ggml.h"
-
+// #include <xs-mmul.h>
 #if defined(_MSC_VER) || defined(__MINGW32__)
 #include <malloc.h> // using malloc.h with MSC/MINGW
 #elif !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__OpenBSD__)
@@ -2900,7 +2900,15 @@ struct ggml_context * ggml_init(struct ggml_init_params params) {
                 ggml_table_silu_f16[i] = GGML_FP32_TO_FP16(ggml_silu_f32(f));
                 ggml_table_exp_f16[i] = GGML_FP32_TO_FP16(expf(f));
                 //printf("%s: i = %d end\n", __func__,i);
+                
             }
+            // printf("%s xs_mmul start\n", __func__);
+            // int64_t a = 0x4321;
+            // int64_t b = 0x7642;
+            // printf("a=%lx\n",a);
+            // printf("b=%lx\n",b);
+            // int64_t result = xs_mmul(a,b);
+            // printf("result=%lx\n",result);
 
             const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
             printf("%s: GELU, Quick GELU, SILU and EXP tables initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
