@@ -5090,32 +5090,32 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
 #elif defined(__riscv_xs_mmul)
     float sumf = 0.0;
     for (int i = 0; i < nb; i++) {
-        // volatile int64_t x0, x1, x2, x3;
-        // volatile int64_t y0, y1, y2, y3;
+        volatile int64_t x0, x1, x2, x3;
+        volatile int64_t y0, y1, y2, y3;
         volatile int64_t res0_buf = 0, res1_buf = 0, res2_buf = 0, res3_buf = 0;
         int64_t res0     = 0, res1     = 0, res2     = 0, res3     = 0;
         int sumi        = 0;
 
-        // memcpy(&x0, &(x[i].qs[0]), 8);
-        // memcpy(&x1, &(x[i].qs[8]), 8);
-        // memcpy(&x2, &(x[i].qs[16]), 8);
-        // memcpy(&x3, &(x[i].qs[24]), 8);
+        memcpy(&x0, &(x[i].qs[0]), 8);
+        memcpy(&x1, &(x[i].qs[8]), 8);
+        memcpy(&x2, &(x[i].qs[16]), 8);
+        memcpy(&x3, &(x[i].qs[24]), 8);
 
-        // mload(&x0, &x1, 1);
-        // mload(&x2, &x3, 2);
+        mload(&x0, &x1, 1);
+        mload(&x2, &x3, 2);
 
         mload((int64_t *)&(x[i].qs[0]), (int64_t *)&(x[i].qs[8]), 1);
        	mload((int64_t *)&(x[i].qs[16]), (int64_t *)&(x[i].qs[24]), 1);
-        // memcpy(&y0, &(y[i].qs[0]), 8);
-        // memcpy(&y1, &(y[i].qs[8]), 8);
-        // memcpy(&y2, &(y[i].qs[16]), 8);
-        // memcpy(&y3, &(y[i].qs[24]), 8);
+        memcpy(&y0, &(y[i].qs[0]), 8);
+        memcpy(&y1, &(y[i].qs[8]), 8);
+        memcpy(&y2, &(y[i].qs[16]), 8);
+        memcpy(&y3, &(y[i].qs[24]), 8);
 
-        // mload(&y0, &y1, 3);
-        // mload(&y2, &y3, 4);,
+        mload(&y0, &y1, 3);
+        mload(&y2, &y3, 4);,
 
-      	mload((int64_t *)&(y[i].qs[0]), (int64_t *)&(y[i].qs[8]), 1);
-       	mload((int64_t *)&(y[i].qs[16]), (int64_t *)&(y[i].qs[24]), 1);
+      	// mload((int64_t *)&(y[i].qs[0]), (int64_t *)&(y[i].qs[8]), 1);
+       	// mload((int64_t *)&(y[i].qs[16]), (int64_t *)&(y[i].qs[24]), 1);
 
         mmul(1, 3, 5);
         mmul(2, 4, 6);
