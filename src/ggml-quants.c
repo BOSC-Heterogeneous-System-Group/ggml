@@ -5259,77 +5259,78 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
     *s = sumf;
 
 #else
-    float sumf = 0.0;
-    for (int i = 0; i < nb; i++) {
-        volatile int64_t x0_temp, x1_temp, x2_temp, x3_temp;
-        volatile int64_t y0_temp, y1_temp, y2_temp, y3_temp;
-        volatile int8_t x0[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-        volatile int8_t x1[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-        volatile int8_t x2[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-        volatile int8_t x3[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-
-        volatile int8_t y0[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-        volatile int8_t y1[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-        volatile int8_t y2[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-        volatile int8_t y3[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-        volatile int64_t res0_buf = 0, res1_buf = 0, res2_buf = 0, res3_buf = 0;
-        volatile int64_t res0     = 0, res1     = 0, res2     = 0, res3     = 0;
-        volatile int sumi        = 0;
-
-        memcpy(&x0_temp, &(x[i].qs[0]), 8);
-        memcpy(&x1_temp, &(x[i].qs[8]), 8);
-        memcpy(&x2_temp, &(x[i].qs[16]), 8);
-        memcpy(&x3_temp, &(x[i].qs[24]), 8);
-
-        for (int j = 0; j < 8; j++) {
-            x0[j] = (int8_t) (x0_temp >> (8*j));
-            x1[j] = (int8_t) (x1_temp >> (8*j));
-            x2[j] = (int8_t) (x2_temp >> (8*j));
-            x3[j] = (int8_t) (x3_temp >> (8*j));
-        }
-    
-        memcpy(&y0_temp, &(y[i].qs[0]), 8);
-        memcpy(&y1_temp, &(y[i].qs[8]), 8);
-        memcpy(&y2_temp, &(y[i].qs[16]), 8);
-        memcpy(&y3_temp, &(y[i].qs[24]), 8);
-
-        for (int j = 0; j < 8; j++) {
-            y0[j] = (int8_t) (y0_temp >> (8*j));
-            y1[j] = (int8_t) (y1_temp >> (8*j));
-            y2[j] = (int8_t) (y2_temp >> (8*j));
-            y3[j] = (int8_t) (y3_temp >> (8*j));
-        }
-
-        for (int j = 0; j < 8; j++) {
-            res0_buf += x0[j]*y0[j];
-            res1_buf += x1[j]*y1[j];
-            res2_buf += x2[j]*y2[j];
-            res3_buf += x3[j]*y3[j];
-        }
-
-        res0 = res0_buf;
-        res1 = res1_buf;
-        res2 = res2_buf;
-        res3 = res3_buf;
-
-        sumi = res0 + res1 + res2 + res3;
-        sumf += sumi*(GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d));
-    }
-    *s = sumf;
-    // scalar
     // float sumf = 0.0;
-
     // for (int i = 0; i < nb; i++) {
-    //     int sumi = 0;
+    //     volatile int64_t x0_temp, x1_temp, x2_temp, x3_temp;
+    //     volatile int64_t y0_temp, y1_temp, y2_temp, y3_temp;
+    //     volatile int8_t x0[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    //     volatile int8_t x1[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    //     volatile int8_t x2[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    //     volatile int8_t x3[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-    //     for (int j = 0; j < qk; j++) {
-    //         sumi += x[i].qs[j]*y[i].qs[j];
+    //     volatile int8_t y0[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    //     volatile int8_t y1[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    //     volatile int8_t y2[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    //     volatile int8_t y3[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    //     volatile int64_t res0_buf = 0, res1_buf = 0, res2_buf = 0, res3_buf = 0;
+    //     volatile int64_t res0     = 0, res1     = 0, res2     = 0, res3     = 0;
+    //     volatile int sumi        = 0;
+
+    //     memcpy(&x0_temp, &(x[i].qs[0]), 8);
+    //     memcpy(&x1_temp, &(x[i].qs[8]), 8);
+    //     memcpy(&x2_temp, &(x[i].qs[16]), 8);
+    //     memcpy(&x3_temp, &(x[i].qs[24]), 8);
+
+    //     for (int j = 0; j < 8; j++) {
+    //         x0[j] = (int8_t) (x0_temp >> (8*j));
+    //         x1[j] = (int8_t) (x1_temp >> (8*j));
+    //         x2[j] = (int8_t) (x2_temp >> (8*j));
+    //         x3[j] = (int8_t) (x3_temp >> (8*j));
+    //     }
+    
+    //     memcpy(&y0_temp, &(y[i].qs[0]), 8);
+    //     memcpy(&y1_temp, &(y[i].qs[8]), 8);
+    //     memcpy(&y2_temp, &(y[i].qs[16]), 8);
+    //     memcpy(&y3_temp, &(y[i].qs[24]), 8);
+
+    //     for (int j = 0; j < 8; j++) {
+    //         y0[j] = (int8_t) (y0_temp >> (8*j));
+    //         y1[j] = (int8_t) (y1_temp >> (8*j));
+    //         y2[j] = (int8_t) (y2_temp >> (8*j));
+    //         y3[j] = (int8_t) (y3_temp >> (8*j));
     //     }
 
+    //     for (int j = 0; j < 8; j++) {
+    //         res0_buf += x0[j]*y0[j];
+    //         res1_buf += x1[j]*y1[j];
+    //         res2_buf += x2[j]*y2[j];
+    //         res3_buf += x3[j]*y3[j];
+    //     }
+
+    //     res0 = res0_buf;
+    //     res1 = res1_buf;
+    //     res2 = res2_buf;
+    //     res3 = res3_buf;
+
+    //     sumi = res0 + res1 + res2 + res3;
     //     sumf += sumi*(GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d));
     // }
-
     // *s = sumf;
+    
+    // scalar
+    float sumf = 0.0;
+
+    for (int i = 0; i < nb; i++) {
+        int sumi = 0;
+
+        for (int j = 0; j < qk; j++) {
+            sumi += x[i].qs[j]*y[i].qs[j];
+        }
+
+        sumf += sumi*(GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d));
+    }
+
+    *s = sumf;
 #endif
 }
 

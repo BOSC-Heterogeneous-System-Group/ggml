@@ -21,7 +21,7 @@
 #include <map>
 #include <string>
 #include <vector>
-
+#include <xs-vdot.h>
 #if defined(_MSC_VER)
 #pragma warning(disable: 4244 4267) // possible loss of data
 #endif
@@ -789,6 +789,27 @@ int main(int argc, char ** argv) {
     ggml_time_init();
 
     const int64_t t_main_start_us = ggml_time_us();
+    //test vdot
+    // int64_t t_vdot_us = 0;
+    // const int64_t t_vdotstart_us = ggml_time_us();
+    // int64_t x = 0x12345678;
+    // volatile int64_t result = 0;
+    // for(int loop = 0; loop <500000;loop+=1){
+    //     result = xs_vdot(x, loop);
+
+    // }
+
+    // t_vdot_us = ggml_time_us() - t_vdotstart_us;
+    // printf("%s:     vdot test time = %8.2f ms / result = %lx\n", __func__, t_vdot_us/1000.0f , result);
+
+    // const int64_t t_scalavdotstart_us = ggml_time_us();
+    // int64_t t_scalavdot_us = 0;
+    // for(int i = 0; i <500000;i+=1){
+    //     result += (1*i)+(2*i)+(3*i)+(4*i)+(5*i)+(6*i)+(7*i)+(8*i);
+    // }
+    // t_scalavdot_us = ggml_time_us() - t_scalavdotstart_us;
+    // printf("%s:     scalavdot test time = %8.2f ms / result = %lx\n", __func__, t_scalavdot_us/1000.0f , result);
+
 
     gpt_params params;
     params.model = "models/gpt-2-117M/ggml-model.bin";

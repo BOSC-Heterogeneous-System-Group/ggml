@@ -1,6 +1,6 @@
 set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_LIST_DIR}/riscv.cmake)
 # add_definitions(-D__riscv_xs_mmul)
-add_definitions(-D__riscv_xs_vdot)
+# add_definitions(-D__riscv_xs_vdot)
 # add_definitions(-D__riscv_xs_baseline)
 
 cmake_minimum_required (VERSION 3.12)
