@@ -4896,9 +4896,10 @@ void ggml_vec_dot_q5_1_q8_1(int n, float * restrict s, size_t bs, const void * r
 #endif
 }
 
+//nrc = 1, bs = 0, bx = 0, by = 0, 
 void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * restrict vx, size_t bx, const void * restrict vy, size_t by, int nrc) {
-    const int qk = QK8_0;
-    const int nb = n / qk;
+    const int qk = QK8_0;//qk = 32  qk表示向量块大小，等于32
+    const int nb = n / qk;//nb表示块的数量，即n个元素分为qk大小的块后的块数
 
     assert(n % qk == 0);
 #if defined(__ARM_FEATURE_MATMUL_INT8)
@@ -4959,121 +4960,231 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
             int8x16_t r3 = vreinterpretq_s8_s64(vzip2q_s64(vreinterpretq_s64_s8(y0_h), vreinterpretq_s64_s8(y1_h)));
 
             sumv0 = vmlaq_f32(sumv0,(vcvtq_f32_s32(vmmlaq_s32((vmmlaq_s32((vmmlaq_s32((vmmlaq_s32(vdupq_n_s32(0), l0, r0)),
-                                                                                       l1, r1)), l2, r2)), l3, r3))), scale);
+                                                                                       l1, r1)), l2, r2)), l3, r3))), scale);//结果是4个f32
         }
-        float32x4_t sumv1 = vextq_f32(sumv0, sumv0, 2);
-        float32x4_t sumv2 = vzip1q_f32(sumv0, sumv1);
+        float32x4_t sumv1 = vextq_f32(sumv0, sumv0, 2);//sum0循环位移，3和4位移到1和2位，1和2位移到3和4位
+        float32x4_t sumv2 = vzip1q_f32(sumv0, sumv1);//sum0的1位,sum1的1位，sum0的2位,sum1的2位
 
         vst1_f32(s, vget_low_f32(sumv2));
         vst1_f32(s + bs, vget_high_f32(sumv2));
         return;
     }
 #endif
-#if defined(__ARM_NEON)
-    float32x4_t sumv0 = vdupq_n_f32(0.0f);
-    float32x4_t sumv1 = vdupq_n_f32(0.0f);
 
-    assert(nb % 2 == 0); // TODO: handle odd nb
+#if defined(__riscv_xs_mmul)
+//__riscv_xs_mmul
+    if (nrc == 2) {
+        const block_q8_0 * restrict vx0 = vx;
+        const block_q8_0 * restrict vx1 = vx + bx;
+        const block_q8_0 * restrict vy0 = vy;
+        const block_q8_0 * restrict vy1 = vy + by;
+        
+        
+        //float32x4_t sumv0 = vdupq_n_f32(0.0f);
 
-    for (int i = 0; i < nb; i += 2) {
-        const block_q8_0 * restrict x0 = &x[i + 0];
-        const block_q8_0 * restrict x1 = &x[i + 1];
-        const block_q8_0 * restrict y0 = &y[i + 0];
-        const block_q8_0 * restrict y1 = &y[i + 1];
+        //每个存8个int8
+        int64_t x0, x1, x2, x3,x4,x5,x6,x7;
+        int64_t y0, y1, y2, y3,y4,y5,y6,y7;
+        int64_t res0_buf = 0, res1_buf = 0, res2_buf = 0, res3_buf = 0,res4_buf = 0, res5_buf = 0, res6_buf = 0, res7_buf = 0;
+        float sumv0[4]={0};
+        for (int i = 0; i < nb; i++) {
+            const block_q8_0 * restrict b_x0 = &vx0[i];
+            const block_q8_0 * restrict b_y0 = &vy0[i];
 
-        const int8x16_t x0_0 = vld1q_s8(x0->qs);
-        const int8x16_t x0_1 = vld1q_s8(x0->qs + 16);
-        const int8x16_t x1_0 = vld1q_s8(x1->qs);
-        const int8x16_t x1_1 = vld1q_s8(x1->qs + 16);
+            const block_q8_0 * restrict b_x1 = &vx1[i];
+            const block_q8_0 * restrict b_y1 = &vy1[i];
+            memcpy(&x0, &(vx0[i].qs[0]), 8);
+            memcpy(&x1, &(vx0[i].qs[8]), 8);
+            memcpy(&x2, &(vx0[i].qs[16]), 8);
+            memcpy(&x3, &(vx0[i].qs[24]), 8);
+            memcpy(&x4, &(vx1[i].qs[0]), 8);
+            memcpy(&x5, &(vx1[i].qs[8]), 8);
+            memcpy(&x6, &(vx1[i].qs[16]), 8);
+            memcpy(&x7, &(vx1[i].qs[24]), 8);
+            memcpy(&y0, &(vy0[i].qs[0]), 8);
+            memcpy(&y1, &(vy0[i].qs[8]), 8);
+            memcpy(&y2, &(vy0[i].qs[16]), 8);
+            memcpy(&y3, &(vy0[i].qs[24]), 8);
+            memcpy(&y4, &(vy1[i].qs[0]), 8);
+            memcpy(&y5, &(vy1[i].qs[8]), 8);
+            memcpy(&y6, &(vy1[i].qs[16]), 8);
+            memcpy(&y7, &(vy1[i].qs[24]), 8);
+            mload(&x0, &x4, 1);
+            mload(&y0, &y4, 3);
+            mmul(1, 3, 5);
+            mload(&x1, &x5, 2);
+            mload(&y1, &y5, 4);
+            mmul(2, 4, 6);
+            mstore(&res0_buf, &res1_buf, 5);
+	        mstore(&res2_buf, &res3_buf, 6);
 
-        // load y
-        const int8x16_t y0_0 = vld1q_s8(y0->qs);
-        const int8x16_t y0_1 = vld1q_s8(y0->qs + 16);
-        const int8x16_t y1_0 = vld1q_s8(y1->qs);
-        const int8x16_t y1_1 = vld1q_s8(y1->qs + 16);
 
-        sumv0 = vmlaq_n_f32(sumv0, vcvtq_f32_s32(vaddq_s32(
-                        ggml_vdotq_s32(vdupq_n_s32(0), x0_0, y0_0),
-                        ggml_vdotq_s32(vdupq_n_s32(0), x0_1, y0_1))), GGML_FP16_TO_FP32(x0->d)*GGML_FP16_TO_FP32(y0->d));
+            mload(&x2, &x6, 1);
+            mload(&y2, &y6, 3);
+            mmul(1, 3, 7);
+            mload(&x3, &x7, 2);
+            mload(&y3, &y7, 4);
+            mmul(2, 4, 8);
+            
+            mstore(&res4_buf, &res5_buf, 7);
+	        mstore(&res6_buf, &res7_buf, 8);
+            int64_t res0 = (res0_buf >> 32) +(res2_buf >> 32)+(res4_buf >> 32)+(res6_buf >> 32) ;
+            int64_t res1 = (int) res0_buf + (int) res2_buf + (int) res4_buf + (int) res6_buf;
+            int64_t res2 = (res1_buf >> 32)+(res3_buf >> 32)+(res5_buf >> 32)+(res7_buf >> 32);
+            int64_t res3 = (int) res1_buf + (int) res3_buf + (int) res5_buf + (int) res7_buf;
+            // float32x4_t scale = {GGML_FP16_TO_FP32(b_x0->d)*GGML_FP16_TO_FP32(b_y0->d),
+            //                  GGML_FP16_TO_FP32(b_x0->d)*GGML_FP16_TO_FP32(b_y1->d),
+            //                  GGML_FP16_TO_FP32(b_x1->d)*GGML_FP16_TO_FP32(b_y0->d),
+            //                  GGML_FP16_TO_FP32(b_x1->d)*GGML_FP16_TO_FP32(b_y1->d)};
+            sumv0[0] += res0*GGML_FP16_TO_FP32(b_x0->d)*GGML_FP16_TO_FP32(b_y0->d);
+            sumv0[1] += res1*GGML_FP16_TO_FP32(b_x0->d) * GGML_FP16_TO_FP32(b_y1->d);
 
-        sumv1 = vmlaq_n_f32(sumv1, vcvtq_f32_s32(vaddq_s32(
-                        ggml_vdotq_s32(vdupq_n_s32(0), x1_0, y1_0),
-                        ggml_vdotq_s32(vdupq_n_s32(0), x1_1, y1_1))), GGML_FP16_TO_FP32(x1->d)*GGML_FP16_TO_FP32(y1->d));
+            sumv0[2] += res2*GGML_FP16_TO_FP32(b_x1->d) * GGML_FP16_TO_FP32(b_y0->d);
+            sumv0[3] += res3*GGML_FP16_TO_FP32(b_x1->d) * GGML_FP16_TO_FP32(b_y1->d);
+            // sumv0[0] += res0_buf*GGML_FP16_TO_FP32(b_x0->d) * GGML_FP16_TO_FP32(b_y0->d);
+            // sumv0[1] += res1_buf*GGML_FP16_TO_FP32(b_x0->d) * GGML_FP16_TO_FP32(b_y1->d);
+            // sumv0[2] += res2_buf*GGML_FP16_TO_FP32(b_x1->d) * GGML_FP16_TO_FP32(b_y0->d);
+            // sumv0[3] += res3_buf*GGML_FP16_TO_FP32(b_x1->d) * GGML_FP16_TO_FP32(b_y1->d);
+            
+        }
+        // float32x4_t sumv1 = vextq_f32(sumv0, sumv0, 2);
+        // float32x4_t sumv2 = vzip1q_f32(sumv0, sumv1);
+
+        // vst1_f32(s, vget_low_f32(sumv2));
+        // vst1_f32(s + bs, vget_high_f32(sumv2));
+        float sumv1[4];
+
+        // 实现循环移位
+        sumv1[0] = sumv0[2]; // 第 3 个元素移动到第 1 个位置
+        sumv1[1] = sumv0[3]; // 第 4 个元素移动到第 2 个位置
+        sumv1[2] = sumv0[0]; // 第 1 个元素移动到第 3 个位置
+        sumv1[3] = sumv0[1]; // 第 2 个元素移动到第 4 个位置
+        float sumv2[4];
+
+        // 交错组合 sumv0 和 sumv1
+        sumv2[0] = sumv0[0]; // sumv0 的第 1 个元素
+        sumv2[1] = sumv1[0]; // sumv1 的第 1 个元素
+        sumv2[2] = sumv0[1]; // sumv0 的第 2 个元素
+        sumv2[3] = sumv1[1]; // sumv1 的第 2 个元素
+        // 将 sumv2 的前两个元素存储到 s
+        *s = sumv2[0];
+        *(s+1) = sumv2[1];
+
+        // 将 sumv2 的后两个元素存储到 s + bs
+        s[bs] = sumv2[2];
+        s[bs + 1] = sumv2[3];       
+        return;
     }
-
-    *s = vaddvq_f32(sumv0) + vaddvq_f32(sumv1);
-#elif defined(__AVX2__) || defined(__AVX__)
-    // Initialize accumulator with zeros
-    __m256 acc = _mm256_setzero_ps();
-
-    // Main loop
-    for (int i = 0; i < nb; ++i) {
-        // Compute combined scale for the block
-        const __m256 d = _mm256_set1_ps(GGML_FP16_TO_FP32(x[i].d) * GGML_FP16_TO_FP32(y[i].d));
-        __m256i qx = _mm256_loadu_si256((const __m256i *)x[i].qs);
-        __m256i qy = _mm256_loadu_si256((const __m256i *)y[i].qs);
-
-        const __m256 q = mul_sum_i8_pairs_float(qx, qy);
-
-        // Multiply q with scale and accumulate
-#if defined(__AVX2__)
-        acc = _mm256_fmadd_ps( d, q, acc );
-#else
-        acc = _mm256_add_ps( _mm256_mul_ps( d, q ), acc );
 #endif
-    }
+// #if defined(__ARM_NEON)
+//     float32x4_t sumv0 = vdupq_n_f32(0.0f);
+//     float32x4_t sumv1 = vdupq_n_f32(0.0f);
 
-    *s = hsum_float_8(acc);
-#elif defined(__riscv_v_intrinsic)
-    float sumf = 0.0;
-    size_t vl = __riscv_vsetvl_e8m1(qk);
+//     assert(nb % 2 == 0); // TODO: handle odd nb
 
-    for (int i = 0; i < nb; i++) {
-        // load elements
-        vint8m1_t bx_0 = __riscv_vle8_v_i8m1(x[i].qs, vl);
-        vint8m1_t by_0 = __riscv_vle8_v_i8m1(y[i].qs, vl);
+//     for (int i = 0; i < nb; i += 2) {
+//         const block_q8_0 * restrict x0 = &x[i + 0];
+//         const block_q8_0 * restrict x1 = &x[i + 1];
+//         const block_q8_0 * restrict y0 = &y[i + 0];
+//         const block_q8_0 * restrict y1 = &y[i + 1];
 
-        vint16m2_t vw_mul = __riscv_vwmul_vv_i16m2(bx_0, by_0, vl);
+//         const int8x16_t x0_0 = vld1q_s8(x0->qs);
+//         const int8x16_t x0_1 = vld1q_s8(x0->qs + 16);
+//         const int8x16_t x1_0 = vld1q_s8(x1->qs);
+//         const int8x16_t x1_1 = vld1q_s8(x1->qs + 16);
 
-        vint32m1_t v_zero = __riscv_vmv_v_x_i32m1(0, vl);
-        vint32m1_t v_sum = __riscv_vwredsum_vs_i16m2_i32m1(vw_mul, v_zero, vl);
+//         // load y
+//         const int8x16_t y0_0 = vld1q_s8(y0->qs);
+//         const int8x16_t y0_1 = vld1q_s8(y0->qs + 16);
+//         const int8x16_t y1_0 = vld1q_s8(y1->qs);
+//         const int8x16_t y1_1 = vld1q_s8(y1->qs + 16);
 
-        int sumi = __riscv_vmv_x_s_i32m1_i32(v_sum);
+//         sumv0 = vmlaq_n_f32(sumv0, vcvtq_f32_s32(vaddq_s32(
+//                         ggml_vdotq_s32(vdupq_n_s32(0), x0_0, y0_0),
+//                         ggml_vdotq_s32(vdupq_n_s32(0), x0_1, y0_1))), GGML_FP16_TO_FP32(x0->d)*GGML_FP16_TO_FP32(y0->d));
 
-        sumf += sumi*(GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d));
-    }
+//         sumv1 = vmlaq_n_f32(sumv1, vcvtq_f32_s32(vaddq_s32(
+//                         ggml_vdotq_s32(vdupq_n_s32(0), x1_0, y1_0),
+//                         ggml_vdotq_s32(vdupq_n_s32(0), x1_1, y1_1))), GGML_FP16_TO_FP32(x1->d)*GGML_FP16_TO_FP32(y1->d));
+//     }
 
-    *s = sumf;
+//     *s = vaddvq_f32(sumv0) + vaddvq_f32(sumv1);
+// #elif defined(__AVX2__) || defined(__AVX__)
+//     // Initialize accumulator with zeros
+//     __m256 acc = _mm256_setzero_ps();
+
+//     // Main loop
+//     for (int i = 0; i < nb; ++i) {
+//         // Compute combined scale for the block
+//         const __m256 d = _mm256_set1_ps(GGML_FP16_TO_FP32(x[i].d) * GGML_FP16_TO_FP32(y[i].d));
+//         __m256i qx = _mm256_loadu_si256((const __m256i *)x[i].qs);
+//         __m256i qy = _mm256_loadu_si256((const __m256i *)y[i].qs);
+
+//         const __m256 q = mul_sum_i8_pairs_float(qx, qy);
+
+//         // Multiply q with scale and accumulate
+// #if defined(__AVX2__)
+//         acc = _mm256_fmadd_ps( d, q, acc );
+// #else
+//         acc = _mm256_add_ps( _mm256_mul_ps( d, q ), acc );
+// #endif
+//     }
+
+//     *s = hsum_float_8(acc);
+// #elif defined(__riscv_v_intrinsic)
+//     float sumf = 0.0;
+//     size_t vl = __riscv_vsetvl_e8m1(qk);
+
+//     for (int i = 0; i < nb; i++) {
+//         // load elements
+//         vint8m1_t bx_0 = __riscv_vle8_v_i8m1(x[i].qs, vl);
+//         vint8m1_t by_0 = __riscv_vle8_v_i8m1(y[i].qs, vl);
+
+//         vint16m2_t vw_mul = __riscv_vwmul_vv_i16m2(bx_0, by_0, vl);
+
+//         vint32m1_t v_zero = __riscv_vmv_v_x_i32m1(0, vl);
+//         vint32m1_t v_sum = __riscv_vwredsum_vs_i16m2_i32m1(vw_mul, v_zero, vl);
+
+//         int sumi = __riscv_vmv_x_s_i32m1_i32(v_sum);
+
+//         sumf += sumi*(GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d));
+//     }
+
+//     *s = sumf;
+
+
+
 
 // #elif defined(__riscv_xs_mmul)
+// // #if defined(__riscv_xs_mmul)
 //     float sumf = 0.0;
 //     for (int i = 0; i < nb; i++) {
-//         // volatile int64_t x0, x1, x2, x3;
-//         // volatile int64_t y0, y1, y2, y3;
+//         volatile int64_t x0, x1, x2, x3;
+//         volatile int64_t y0, y1, y2, y3;
 //         volatile int64_t res0_buf = 0, res1_buf = 0, res2_buf = 0, res3_buf = 0;
-//         volatile int64_t res0     = 0, res1     = 0, res2     = 0, res3     = 0;
-//         volatile int sumi        = 0;
+//         int64_t res0     = 0, res1     = 0, res2     = 0, res3     = 0;
+//         int sumi        = 0;
 
-//         // memcpy(&x0, &(x[i].qs[0]), 8);
-//         // memcpy(&x1, &(x[i].qs[8]), 8);
-//         // memcpy(&x2, &(x[i].qs[16]), 8);
-//         // memcpy(&x3, &(x[i].qs[24]), 8);
+//         memcpy(&x0, &(x[i].qs[0]), 8);
+//         memcpy(&x1, &(x[i].qs[8]), 8);
+//         memcpy(&x2, &(x[i].qs[16]), 8);
+//         memcpy(&x3, &(x[i].qs[24]), 8);
 
-//         // mload(&x0, &x1, 1);
-//         // mload(&x2, &x3, 2);
+//         mload(&x0, &x1, 1);
+//         mload(&x2, &x3, 2);
 
-//       	mload((volatile int64_t *)&(x[i].qs[0]), (volatile int64_t *)&(x[i].qs[8]), 1);
-//        	mload((volatile int64_t *)&(x[i].qs[16]), (volatile int64_t *)&(x[i].qs[24]), 1);
-//         // memcpy(&y0, &(y[i].qs[0]), 8);
-//         // memcpy(&y1, &(y[i].qs[8]), 8);
-//         // memcpy(&y2, &(y[i].qs[16]), 8);
-//         // memcpy(&y3, &(y[i].qs[24]), 8);
+//         // mload((int64_t *)&(x[i].qs[0]), (int64_t *)&(x[i].qs[8]), 1);
+//        	// mload((int64_t *)&(x[i].qs[16]), (int64_t *)&(x[i].qs[24]), 1);
+//         memcpy(&y0, &(y[i].qs[0]), 8);
+//         memcpy(&y1, &(y[i].qs[8]), 8);
+//         memcpy(&y2, &(y[i].qs[16]), 8);
+//         memcpy(&y3, &(y[i].qs[24]), 8);
 
-//         // mload(&y0, &y1, 3);
-//         // mload(&y2, &y3, 4);,
+//         mload(&y0, &y1, 3);
+//         mload(&y2, &y3, 4);
 
-//       	mload((volatile int64_t *)&(y[i].qs[0]), (volatile int64_t *)&(y[i].qs[8]), 1);
-//        	mload((volatile int64_t *)&(y[i].qs[16]), (volatile int64_t *)&(y[i].qs[24]), 1);
+//       	// mload((int64_t *)&(y[i].qs[0]), (int64_t *)&(y[i].qs[8]), 1);
+//        	// mload((int64_t *)&(y[i].qs[16]), (int64_t *)&(y[i].qs[24]), 1);
 
 //         mmul(1, 3, 5);
 //         mmul(2, 4, 6);
@@ -5090,52 +5201,8 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
 //         sumf += sumi*(GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d));
 //     }
 //     *s = sumf;
-#elif defined(__riscv_xs_mmul)
-    float sumf = 0.0;
-    for (int i = 0; i < nb; i++) {
-        volatile int64_t x0, x1, x2, x3;
-        volatile int64_t y0, y1, y2, y3;
-        volatile int64_t res0_buf = 0, res1_buf = 0, res2_buf = 0, res3_buf = 0;
-        int64_t res0     = 0, res1     = 0, res2     = 0, res3     = 0;
-        int sumi        = 0;
 
-        memcpy(&x0, &(x[i].qs[0]), 8);
-        memcpy(&x1, &(x[i].qs[8]), 8);
-        memcpy(&x2, &(x[i].qs[16]), 8);
-        memcpy(&x3, &(x[i].qs[24]), 8);
-
-        mload(&x0, &x1, 1);
-        mload(&x2, &x3, 2);
-
-        // mload((int64_t *)&(x[i].qs[0]), (int64_t *)&(x[i].qs[8]), 1);
-       	// mload((int64_t *)&(x[i].qs[16]), (int64_t *)&(x[i].qs[24]), 1);
-        memcpy(&y0, &(y[i].qs[0]), 8);
-        memcpy(&y1, &(y[i].qs[8]), 8);
-        memcpy(&y2, &(y[i].qs[16]), 8);
-        memcpy(&y3, &(y[i].qs[24]), 8);
-
-        mload(&y0, &y1, 3);
-        mload(&y2, &y3, 4);
-
-      	// mload((int64_t *)&(y[i].qs[0]), (int64_t *)&(y[i].qs[8]), 1);
-       	// mload((int64_t *)&(y[i].qs[16]), (int64_t *)&(y[i].qs[24]), 1);
-
-        mmul(1, 3, 5);
-        mmul(2, 4, 6);
-
-        mstore(&res0_buf, &res1_buf, 5);
-	    mstore(&res2_buf, &res3_buf, 6);
-
-        res0 = res0_buf >> 32;
-        res1 = (int) res1_buf;
-        res2 = res2_buf >> 32;
-        res3 = (int) res3_buf;
-
-        sumi = res0 + res1 + res2 + res3;
-        sumf += sumi*(GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d));
-    }
-    *s = sumf;
-#elif defined(__riscv_xs_baseline)
+#if defined(__riscv_xs_baseline)
     float sumf = 0.0;
     for (int i = 0; i < nb; i++) {
         volatile int64_t x0_temp, x1_temp, x2_temp, x3_temp;
@@ -5193,45 +5260,45 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
         sumf += sumi*(GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d));
     }
     *s = sumf;
-#elif defined(__POWER9_VECTOR__)
-    vector float vsumf0 = vec_splats(0.0f);
+// #elif defined(__POWER9_VECTOR__)
+//     vector float vsumf0 = vec_splats(0.0f);
 
-#pragma GCC unroll 4
-    for (int i = 0; i < nb; i++) {
-        __builtin_prefetch(x[i].qs, 0, 1);
-        __builtin_prefetch(y[i].qs, 0, 1);
+// #pragma GCC unroll 4
+//     for (int i = 0; i < nb; i++) {
+//         __builtin_prefetch(x[i].qs, 0, 1);
+//         __builtin_prefetch(y[i].qs, 0, 1);
 
-        vector float vxd = vec_splats(GGML_FP16_TO_FP32(x[i].d));
-        vector float vyd = vec_splats(GGML_FP16_TO_FP32(y[i].d));
-        vector float vd = vec_mul(vxd, vyd);
+//         vector float vxd = vec_splats(GGML_FP16_TO_FP32(x[i].d));
+//         vector float vyd = vec_splats(GGML_FP16_TO_FP32(y[i].d));
+//         vector float vd = vec_mul(vxd, vyd);
 
-        vector signed char q8x0 = vec_xl( 0, x[i].qs);
-        vector signed char q8x1 = vec_xl(16, x[i].qs);
-        vector signed char q8y0 = vec_xl( 0, y[i].qs);
-        vector signed char q8y1 = vec_xl(16, y[i].qs);
+//         vector signed char q8x0 = vec_xl( 0, x[i].qs);
+//         vector signed char q8x1 = vec_xl(16, x[i].qs);
+//         vector signed char q8y0 = vec_xl( 0, y[i].qs);
+//         vector signed char q8y1 = vec_xl(16, y[i].qs);
 
-        vector signed short qv0 = vec_mule(q8x0, q8y0);
-        vector signed short qv1 = vec_mulo(q8x0, q8y0);
-        vector signed short qv2 = vec_mule(q8x1, q8y1);
-        vector signed short qv3 = vec_mulo(q8x1, q8y1);
+//         vector signed short qv0 = vec_mule(q8x0, q8y0);
+//         vector signed short qv1 = vec_mulo(q8x0, q8y0);
+//         vector signed short qv2 = vec_mule(q8x1, q8y1);
+//         vector signed short qv3 = vec_mulo(q8x1, q8y1);
 
-        vector signed int vsumi0 = vec_add(vec_unpackh(qv0), vec_unpackh(qv1));
-        vector signed int vsumi1 = vec_add(vec_unpackl(qv0), vec_unpackl(qv1));
-        vector signed int vsumi2 = vec_add(vec_unpackh(qv2), vec_unpackh(qv3));
-        vector signed int vsumi3 = vec_add(vec_unpackl(qv2), vec_unpackl(qv3));
+//         vector signed int vsumi0 = vec_add(vec_unpackh(qv0), vec_unpackh(qv1));
+//         vector signed int vsumi1 = vec_add(vec_unpackl(qv0), vec_unpackl(qv1));
+//         vector signed int vsumi2 = vec_add(vec_unpackh(qv2), vec_unpackh(qv3));
+//         vector signed int vsumi3 = vec_add(vec_unpackl(qv2), vec_unpackl(qv3));
 
-        vsumi0 = vec_add(vsumi0, vsumi2);
-        vsumi1 = vec_add(vsumi1, vsumi3);
+//         vsumi0 = vec_add(vsumi0, vsumi2);
+//         vsumi1 = vec_add(vsumi1, vsumi3);
 
-        vsumi0 = vec_add(vsumi0, vsumi1);
+//         vsumi0 = vec_add(vsumi0, vsumi1);
 
-        vsumf0 = vec_madd(vec_ctf(vsumi0, 0), vd, vsumf0);
-    }
+//         vsumf0 = vec_madd(vec_ctf(vsumi0, 0), vd, vsumf0);
+//     }
 
-    vsumf0 = vec_add(vsumf0, vec_sld(vsumf0, vsumf0, 4));
-    vsumf0 = vec_add(vsumf0, vec_sld(vsumf0, vsumf0, 8));
+//     vsumf0 = vec_add(vsumf0, vec_sld(vsumf0, vsumf0, 4));
+//     vsumf0 = vec_add(vsumf0, vec_sld(vsumf0, vsumf0, 8));
 
-    *s = vec_extract(vsumf0, 0);
+//     *s = vec_extract(vsumf0, 0);
 #elif defined(__riscv_xs_vdot)
     float sumf = 0.0;
     // each block have 32 int8

@@ -35,7 +35,9 @@
 #ifdef __ARM_FEATURE_MATMUL_INT8
 #undef GGML_USE_LLAMAFILE
 #endif
-
+#ifdef ____riscv_xs_mmul
+#undef GGML_USE_LLAMAFILE
+#endif
 #ifdef GGML_USE_LLAMAFILE
 #include "sgemm.h"
 #endif
@@ -706,7 +708,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .from_float_reference     = (ggml_from_float_t) quantize_row_q8_0_reference,
         .vec_dot                  = ggml_vec_dot_q8_0_q8_0,
         .vec_dot_type             = GGML_TYPE_Q8_0,
-#if defined (__ARM_FEATURE_MATMUL_INT8)
+#if defined (__ARM_FEATURE_MATMUL_INT8)|| defined(__riscv_xs_mmul)
         .nrows                    = 2,
 #else
         .nrows                    = 1,
@@ -2928,11 +2930,11 @@ struct ggml_context * ggml_init(struct ggml_init_params params) {
             };
 
             for (int i = 0; i < GGML_MAX_CONTEXTS; ++i) {
-                printf("%s: i = %d start\n", __func__,i);
+                //printf("%s: i = %d start\n", __func__,i);
                 g_state.contexts[i].used = false;
-                printf("%s: i = %d end\n", __func__,i);
+                //printf("%s: i = %d end\n", __func__,i);
             }
-            printf("GGML_MAX_CONTEXTS end\n");
+            //printf("GGML_MAX_CONTEXTS end\n");
             const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
             GGML_PRINT_DEBUG("%s: g_state initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
             printf("%s: g_state initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
@@ -11996,6 +11998,8 @@ UseGgmlGemm1:;
     const size_t row_size = ggml_row_size(vec_dot_type, ne10);
 
 #if GGML_USE_LLAMAFILE
+    //printf("Start GGML_USE_LLAMAFILE");
+    //不运行
     if (src1->type != vec_dot_type) {
         for (int64_t i13 = 0; i13 < ne13; i13++)
             for (int64_t i12 = 0; i12 < ne12; i12++)
@@ -12016,32 +12020,35 @@ UseGgmlGemm1:;
     }
 UseGgmlGemm2:;
 #endif
-
+    //printf("Start distribute the thread work");
+    //运行
+    //初始化源矩阵的行数
+    //用于确定如何分配线程和循环的范围
     const int64_t nr0 = ne01;          // src0 rows
     const int64_t nr1 = ne1*ne12*ne13; // src1 rows
 
-    //printf("nr0 = %lld, nr1 = %lld\n", nr0, nr1);
-
+    // printf("nr0 = %lld, nr1 = %lld\n", nr0, nr1);
     // distribute the thread work across the inner or outer loop based on which one is larger
 
-    const int64_t nth0 = nr0 > nr1 ? nth : 1; // parallelize by src0 rows
-    const int64_t nth1 = nr0 > nr1 ? 1 : nth; // parallelize by src1 rows
+    //如果 nr0 大于 nr1，则在 src0 的行上并行，否则在 src1 的行上并行//单核的话两个的值都是1
+    const int64_t nth0 = nr0 > nr1 ? nth : 1; // parallelize by src0 rows, 线程数或1
+    const int64_t nth1 = nr0 > nr1 ? 1 : nth; // parallelize by src1 rows, 1 or 线程数
+    
+    const int64_t ith0 = ith % nth0;//当前线程在对应维度上的索引，用于划分工作范围
+    const int64_t ith1 = ith / nth0;//单核的话两个的值都是0
 
-    const int64_t ith0 = ith % nth0;
-    const int64_t ith1 = ith / nth0;
+    const int64_t dr0 = (nr0 + nth0 - 1)/nth0;//每个线程在对应维度上需要处理的行数。
+    const int64_t dr1 = (nr1 + nth1 - 1)/nth1;//dr0=nr0, dr1=nr1
 
-    const int64_t dr0 = (nr0 + nth0 - 1)/nth0;
-    const int64_t dr1 = (nr1 + nth1 - 1)/nth1;
+    const int64_t ir010 = dr0*ith0;//当前线程在 src0 上的起始和结束行索引,线程=1时,ir010 = 0
+    const int64_t ir011 = MIN(ir010 + dr0, nr0);//线程=1时,ir011 = nr0
 
-    const int64_t ir010 = dr0*ith0;
-    const int64_t ir011 = MIN(ir010 + dr0, nr0);
+    const int64_t ir110 = dr1*ith1;//当前线程在 src1 上的起始和结束行索引,线程=1时,ir110 = 0
+    const int64_t ir111 = MIN(ir110 + dr1, nr1);//线程=1时,ir111 = nr1
+    //printf("nth0 = %6lld, nth1 = %6lld, ith0 = %6lld, ith1 = %6lld, dr0=%6lld, dr1=%6lld\n", nth0, nth1, ith0, ith1, dr0, dr1);
+    // printf("ir010 = %6lld, ir011 = %6lld, ir110 = %6lld, ir111 = %6lld\n", ir010, ir011, ir110, ir111);
 
-    const int64_t ir110 = dr1*ith1;
-    const int64_t ir111 = MIN(ir110 + dr1, nr1);
-
-    //printf("ir010 = %6lld, ir011 = %6lld, ir110 = %6lld, ir111 = %6lld\n", ir010, ir011, ir110, ir111);
-
-    // threads with no work simply yield (not sure if it helps)
+    // threads with no work simply yield (not sure if it helps)当前线程的起始索引大于等于结束索引，说明没有需要处理的行，线程让出 CPU 调度
     if (ir010 >= ir011 || ir110 >= ir111) {
         sched_yield();
         return;
@@ -12051,26 +12058,34 @@ UseGgmlGemm2:;
     assert(ne13 % ne03 == 0);
 
     // block-tiling attempt
+    //定义块状处理的尺寸，在处理矩阵时，每次处理 16 行或列
     const int64_t blck_0 = 16;
     const int64_t blck_1 = 16;
 
     // dot kernels can handle 1 row and col at a time, but mmla kernels can process 2 rows and cols
     int64_t nrc = vec_dot_num_rows;
+    // printf("vec_dot_num_rows = %lld\n", nrc);
+    //int64_t nrc = 2;
     // TODO: currently the mmla kernels support only even numbered rows/cols.
     // this check can be removed once they are extended to support odd numbered rows/cols too
     if ((nr0 % 2 != 0) || (ne11 % 2 != 0)) {
+    // if ((nr0 % 2 != 0) ) {    
         nrc = 1;
+        printf("nr0 = %lld,ne11 = %lld,nrc = %lld\n", nr0,ne11,nrc);
     }
-
+    // printf("nrc = %lld\n", nrc);
+    //源矩阵 src1 的列步长，在内存中移动到下一列需要的偏移量
+    //是连续内存或类型不是vec_dot_type则使用row_size  否则使用 nb11
     const size_t src1_col_stride = src1_cont || src1->type != vec_dot_type ? row_size : nb11;
 
     // attempt to reduce false-sharing (does not seem to make a difference)
     // 16 * 2, accounting for mmla kernels
-    float tmp[32];
+    float tmp[32];//存储中间计算结果
 
-    for (int64_t iir1 = ir110; iir1 < ir111; iir1 += blck_1) {
-        for (int64_t iir0 = ir010; iir0 < ir011; iir0 += blck_0) {
-            for (int64_t ir1 = iir1; ir1 < iir1 + blck_1 && ir1 < ir111; ir1 += nrc) {
+    for (int64_t iir1 = ir110; iir1 < ir111; iir1 += blck_1) {// 遍历 src1 的行块
+        for (int64_t iir0 = ir010; iir0 < ir011; iir0 += blck_0) {// 遍历 src0 的行块
+            for (int64_t ir1 = iir1; ir1 < iir1 + blck_1 && ir1 < ir111; ir1 += nrc) {// 遍历当前块内的行，步长为1（因为nrc=1）
+                //计算在 src1 矩阵中的具体位置索引
                 const int64_t i13 = (ir1/(ne12*ne1));
                 const int64_t i12 = (ir1 - i13*ne12*ne1)/ne1;
                 const int64_t i11 = (ir1 - i13*ne12*ne1 - i12*ne1);
@@ -12079,30 +12094,57 @@ UseGgmlGemm2:;
                 const int64_t i03 = i13/r3;
                 const int64_t i02 = i12/r2;
 
+                //确定当前处理的行和列
                 const int64_t i1 = i11;
                 const int64_t i2 = i12;
                 const int64_t i3 = i13;
 
+                //计算源矩阵的行指针.矩阵中当前处理的行的起始地址+偏移量:i02 * nb02 + i03 * nb03
                 const char * src0_row = (const char *) src0->data + (0 + i02*nb02 + i03*nb03);
 
                 // desc: when src1 is not a contiguous memory block we have to calculate the offset using the strides
                 //       if it is, then we have either copied the data to params->wdata and made it contiguous or we are using
                 //       the original src1 data pointer, so we should index using the indices directly
                 // TODO: this is a bit of a hack, we should probably have a better way to handle this
+                //计算源矩阵的列指针,根据 src1 是否是连续内存块，选择不同的计算方式
                 const char * src1_col = (const char *) wdata +
                     (src1_cont || src1->type != vec_dot_type
                      ? (i11      + i12*ne11 + i13*ne12*ne11)*row_size
                      : (i11*nb11 + i12*nb12 + i13*nb13));
-                float * dst_col = (float *) ((char *) dst->data + (i1*nb1 + i2*nb2 + i3*nb3));
+                float * dst_col = (float *) ((char *) dst->data + (i1*nb1 + i2*nb2 + i3*nb3));//指向目标矩阵 dst 中当前处理位置的地址，用于存储计算结果
 
                 //for (int64_t ir0 = iir0; ir0 < iir0 + blck_0 && ir0 < ir011; ++ir0) {
                 //    vec_dot(ne00, &dst_col[ir0], src0_row + ir0*nb01, src1_col);
                 //}
 
+                //ne00：向量长度
+                //&tmp[ir0 - iir0]：将结果暂存到临时缓冲区
+                //src0_row + ir0 * nb01：源矩阵 src0 的当前行(地址)
+                //src1_col：源矩阵 src1 的当前列(地址)
+                //nrc：一次处理的行数（1行）
+                //printf("\nne00 = %lld, nr1 = %lld\n", ne00, nr1);
                 for (int64_t ir0 = iir0; ir0 < iir0 + blck_0 && ir0 < ir011; ir0 += nrc) {
                     vec_dot(ne00, &tmp[ir0 - iir0], (nrc>1 ? 16 : 0), src0_row + ir0*nb01, (nrc>1 ? nb01 : 0), src1_col, (nrc>1 ? src1_col_stride : 0), nrc);
-                }
+                    //     int n,float * restrict s, size_t bs,    const void * restrict vx, size_t bx,  const void * restrict vy,  size_t by,         int nrc
+                    //vec_dot(ne00, &tmp[ir0 - iir0], 0, src0_row + ir0*nb01, 0, src1_col,  0,1);
+                    
+                //     float sumf = 0.0;
+                //     const int qk = 32;
+                //     int nb = ne00 / 32;
+                //     for (int i = 0; i < nb; i++) {
+                //         int sumi = 0;
 
+                //         for (int j = 0; j < qk; j++) {
+                //             sumi += x[i].qs[j]*y[i].qs[j];
+                //         }
+
+                //     sumf += sumi*(GGML_FP16_TO_FP32(x[i].d)*GGML_FP16_TO_FP32(y[i].d));
+                //     }
+
+                // *s = sumf;
+                }
+                //
+                //将临时缓冲区中的计算结果复制到目标矩阵的正确位置
                 for (int cn = 0; cn < nrc; ++cn) {
                     memcpy(&dst_col[iir0 + cn*nb1/nb0], tmp + (cn*16), (MIN(iir0 + blck_0, ir011) - iir0)*sizeof(float));
                 }
@@ -23064,7 +23106,7 @@ int ggml_cpu_has_vsx(void) {
 }
 
 int ggml_cpu_has_matmul_int8(void) {
-#if defined(__ARM_FEATURE_MATMUL_INT8)
+#if defined(__ARM_FEATURE_MATMUL_INT8)|| defined(__riscv_xs_mmul)
     return 1;
 #else
     return 0;
